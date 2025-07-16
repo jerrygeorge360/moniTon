@@ -5,14 +5,30 @@ import json
 import sseclient
 import redis
 from dotenv import load_dotenv
-
 load_dotenv()
 
 TON_API_TOKEN = os.getenv('TON_API_TOKEN')
 BASE_URL = os.getenv('TON_API_BASE', 'https://tonapi.io')
 headers = {"Authorization": f"Bearer {TON_API_TOKEN}"}
 
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
+redis_url = os.getenv("REDIS_URL")
+if redis_url:
+    # Connect using the full URL, e.g. Upstash URL with TLS and password
+    redis_client = redis.from_url(redis_url)
+else:
+    # Connect using individual env vars with defaults if not set
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6379))
+    redis_db = int(os.getenv("REDIS_DB", 0))
+    redis_password = os.getenv("REDIS_PASSWORD", None)
+
+    redis_client = redis.Redis(
+        host=redis_host,
+        port=redis_port,
+        db=redis_db,
+        password=redis_password,
+    )
+
 active_streams = set()
 
 # ==== SSE GENERIC WRAPPER WITH RESILIENCE ====
@@ -36,13 +52,13 @@ def stream_sse_events(url: str, label: str, handler_fn):
 def handle_tx_event(data):
     account = data.get("account_id")
     tx_hash = data.get("tx_hash")
-    timestamp = data.get("timestamp")
+    lt = data.get("lt")
     actions = data.get("actions", [])
 
-    md = f"*✅ New Transaction on Testnet*\n"
+    md = f"*✅ New Transaction on Mainnet*\n"
     md += f"`Account:` `{account}`\n"
     md += f"`Tx Hash:` `{tx_hash}`\n"
-    md += f"`Timestamp:` `{timestamp}`\n"
+    md += f"`Lt:` `{lt}`\n"
 
     if actions:
         md += "*Actions:*\n"
@@ -113,7 +129,7 @@ def listen_global_mempool():
 
 # ==== MAIN ====
 if __name__ == "__main__":
-    print("🚀 TON Tracker Backend Started")
+    print("TON Tracker Backend Started")
     listen_global_transactions()
     listen_global_traces()
     listen_global_mempool()

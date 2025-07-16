@@ -2,43 +2,71 @@ import os
 import redis
 import telebot
 from telebot import types
-from dotenv import load_dotenv
 import threading
+from dotenv import load_dotenv
 
 load_dotenv()
+
 BOT_TOKEN = os.getenv("TG_API_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
+
+
+redis_url = os.getenv("REDIS_URL")
+if redis_url:
+    redis_client = redis.from_url(redis_url)
+else:
+    # Connect using individual env vars with defaults if not set
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6379))
+    redis_db = int(os.getenv("REDIS_DB", 0))
+    redis_password = os.getenv("REDIS_PASSWORD", None)
+
+    redis_client = redis.Redis(
+        host=redis_host,
+        port=redis_port,
+        db=redis_db,
+        password=redis_password,
+    )
+
+
 
 # === Redis Helpers ===
 def get_user_wallets(chat_id):
     return {w.decode() for w in redis_client.smembers(f"user:{chat_id}:wallets")}
+
 
 def add_wallet_for_user(chat_id, wallet):
     redis_client.sadd("tracked_wallets", wallet)
     redis_client.sadd(f"user:{chat_id}:wallets", wallet)
     redis_client.sadd(f"wallet:{wallet}:subscribers", chat_id)
 
+
 def remove_wallet_for_user(chat_id, wallet):
     redis_client.srem(f"user:{chat_id}:wallets", wallet)
     redis_client.srem(f"wallet:{wallet}:subscribers", chat_id)
 
+
 def get_wallet_subscribers(wallet):
     return {int(uid.decode()) for uid in redis_client.smembers(f"wallet:{wallet}:subscribers")}
+
 
 def clear_wallets_for_user(chat_id):
     wallets = get_user_wallets(chat_id)
     for wallet in wallets:
         remove_wallet_for_user(chat_id, wallet)
 
+
 def add_global_subscriber(chat_id):
     redis_client.sadd("global_subscribers", chat_id)
+
 
 def remove_global_subscriber(chat_id):
     redis_client.srem("global_subscribers", chat_id)
 
+
 def is_global_subscriber(chat_id):
     return redis_client.sismember("global_subscribers", chat_id)
+
 
 # === Commands ===
 @bot.message_handler(commands=['start'])
@@ -66,6 +94,7 @@ def handle_start(message):
         reply_markup=keyboard
     )
 
+
 @bot.message_handler(func=lambda msg: msg.text == "📖 Help" or msg.text == "/help")
 def handle_help(message):
     help_text = (
@@ -79,6 +108,7 @@ def handle_help(message):
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
+
 @bot.message_handler(commands=['follow'])
 def handle_follow(message):
     parts = message.text.split()
@@ -87,7 +117,8 @@ def handle_follow(message):
         return
     wallet = parts[1].strip()
     if not wallet.startswith("E"):
-        bot.send_message(message.chat.id, "❌ Invalid wallet format. Wallet must start with `E...`", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ Invalid wallet format. Wallet must start with `E...`",
+                         parse_mode="Markdown")
         return
     add_wallet_for_user(message.chat.id, wallet)
     bot.send_message(
@@ -96,6 +127,7 @@ def handle_follow(message):
         "• Transactions\n• Traces\n• Mempool",
         parse_mode="Markdown"
     )
+
 
 @bot.message_handler(commands=['unfollow'])
 def handle_unfollow(message):
@@ -106,6 +138,7 @@ def handle_unfollow(message):
     wallet = parts[1].strip()
     remove_wallet_for_user(message.chat.id, wallet)
     bot.send_message(message.chat.id, f"🔕 Unfollowed `{wallet}`", parse_mode="Markdown")
+
 
 @bot.message_handler(commands=['mywallets'])
 def handle_mywallets(message):
@@ -123,20 +156,24 @@ def handle_mywallets(message):
         msg += "\n🌍 You are tracking *ALL* global events."
     bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
+
 @bot.message_handler(commands=['clearwallets'])
 def handle_clearwallets(message):
     clear_wallets_for_user(message.chat.id)
     bot.send_message(message.chat.id, "🧹 All wallets cleared from your list.")
+
 
 @bot.message_handler(commands=['followall'])
 def handle_followall(message):
     add_global_subscriber(message.chat.id)
     bot.send_message(message.chat.id, "📡 Subscribed to *ALL global wallet events*.", parse_mode="Markdown")
 
+
 @bot.message_handler(commands=['unfollowall'])
 def handle_unfollowall(message):
     remove_global_subscriber(message.chat.id)
     bot.send_message(message.chat.id, "🔕 Unsubscribed from *ALL global wallet events*.", parse_mode="Markdown")
+
 
 # === Redis Event Broadcaster ===
 def redis_listener():
@@ -164,8 +201,10 @@ def redis_listener():
             except Exception as e:
                 print("❌ Redis message send error:", e)
 
-# === Run Bot ===
+
 if __name__ == "__main__":
-    threading.Thread(target=redis_listener, daemon=True).start()
-    print("🤖 TON Bot Running...")
+    # Start the bot polling (blocking)
+    print("TON Bot Running...")
+    redis_thread = threading.Thread(target=redis_listener, daemon=True)
+    redis_thread.start()
     bot.infinity_polling()
