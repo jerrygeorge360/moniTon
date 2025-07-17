@@ -1,0 +1,38 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ton-tracker-bot
+    restart: always
+    working_dir: /app/backend/bot
+    command: ["python", "bot.py"]
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ton-tracker-backend
+    restart: always
+    working_dir: /app/backend
+    command: ["python", "app.py"]
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:

@@ -4,7 +4,7 @@ A real-time wallet tracking system for the **TON blockchain**, built with **Pyth
 
 ---
 
-## 🚀 What It Does
+## What It Does
 
 * 📲 Tracks specific TON wallet addresses.
 * 🌍 Supports **global tracking** of all TON network activity.

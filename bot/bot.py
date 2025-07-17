@@ -116,9 +116,10 @@ def handle_follow(message):
         bot.send_message(message.chat.id, "❌ Usage: `/follow <wallet_address>`", parse_mode="Markdown")
         return
     wallet = parts[1].strip()
-    if not wallet.startswith("E"):
-        bot.send_message(message.chat.id, "❌ Invalid wallet format. Wallet must start with `E...`",
+    if not wallet.startswith("E") and not wallet.startswith("U"):
+        bot.send_message(message.chat.id, "❌ Invalid wallet format. Wallet must start with `E...` or `U...`",
                          parse_mode="Markdown")
+
         return
     add_wallet_for_user(message.chat.id, wallet)
     bot.send_message(
@@ -155,6 +156,7 @@ def handle_mywallets(message):
     if is_global:
         msg += "\n🌍 You are tracking *ALL* global events."
     bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+
 
 
 @bot.message_handler(commands=['clearwallets'])
